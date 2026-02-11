@@ -59,14 +59,14 @@ def create_agent(model_name: str) -> Agent:
     return Agent(model=model, tools=[http_request], system_prompt=system_prompt)
 
 
-def run_evaluation(models: list[str]) -> None:
-    prompts = [
-        {"name": "current_weather_seattle", "text": "What is the current weather in Seattle?"},
-        {
-            "name": "lat_lon_bothell",
-            "text": "Can you get me the latitude and longitude you know for Bothell Downtown in Washington?",
-        },
-    ]
+def load_prompts(prompt_file: str) -> list[dict[str, str]]:
+    with open(prompt_file, "r") as f:
+        data = json.load(f)
+    return data["prompts"]
+
+
+def run_evaluation(models: list[str], prompt_file: str) -> None:
+    prompts = load_prompts(prompt_file)
 
     results_root = os.path.join("evaluation_results", "strands")
     if not os.path.exists(results_root):
@@ -129,6 +129,7 @@ if __name__ == "__main__":
         default=["Kimi-K2.5", "Kimi-K2-Thinking", "DeepSeek-V3.2", "gpt-4o"],
         help="List of Foundry model deployment names to evaluate.",
     )
+    parser.add_argument("--prompts", type=str, default="prompts.json", help="Path to prompts JSON file.")
     args = parser.parse_args()
 
-    run_evaluation(args.models)
+    run_evaluation(args.models, args.prompts)

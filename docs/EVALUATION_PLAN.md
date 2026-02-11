@@ -8,10 +8,10 @@ We will use an iterative approach to build our test suite. We will start with a 
 
 **Phase 1: Simple Tool Use**
 
-*   **Prompt 1 (Current Weather):** "What is the current weather in Seattle?"
+*   **Prompt 1 (Current Weather):** "What is the current weather in New York City?"
 *   **Goal:** Tests the agent's ability to use the `http_request` tool to get information from a public API.
 
-*   **Prompt 2 (Location Query):** "Can you get me the latitude and longitude you know for Bothell Downtown in Washington?"
+*   **Prompt 2 (Location Query):** "Can you get me the latitude and longitude for Times Square in New York City?"
 *   **Goal:** Tests the model's parametric knowledge and its ability to resolve ambiguities in location queries, potentially using an HTTP tool or internal knowledge.
 
 ### 2. Create a Standardized Evaluation Rubric
@@ -57,6 +57,7 @@ Both scripts:
 1.  Takes a list of model names as a command-line argument.
 2.  Runs each prompt in the test suite against each model.
 3.  Saves the full conversation log for each model to a separate JSON file in `evaluation_results/scratch/` or `evaluation_results/strands/`.
+4.  Loads prompts from `prompts.json` by default (configurable with `--prompts`).
 
 ### 4. Analyze the Results
 
