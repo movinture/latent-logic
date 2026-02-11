@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+.env
+
+# Virtual environments
+.venv
+
+# Logs and evaluation outputs (track folders only)
+logs/*
+!logs/.gitkeep
+evaluation_results/*
+!evaluation_results/.gitkeep
