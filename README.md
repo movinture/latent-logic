@@ -70,7 +70,7 @@ uv run strands_foundry/run_strands_evaluation.py --models "Kimi-K2.5" "Kimi-K2-T
 
 - Technical deep dive: `docs/TECHNICAL_NOTES.md`
 - Evaluation plan: `docs/EVALUATION_PLAN.md`
-- Documentation index: `docs/README.md`
+
 
 ## Logging
 
