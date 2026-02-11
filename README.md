@@ -1,6 +1,6 @@
-# Evaluating LLMs
+# Latent Logic
 
-A practical sandbox for evaluating model reasoning, thinking, and tool‑use behavior using agentic loops.
+  A practical sandbox for probing the reasoning, thinking patterns, and parametric knowledge of LLMs — using agentic loops, tool use, and evaluation harnesses to see how models behave in real tasks.
 
 - Agentic loop from Scratch using Completions API with Foundry Models, custom loop, tools, and evaluation harness
 - Use [Strands](https://strandsagents.com/latest/) agent loop with a custom Foundry provider
