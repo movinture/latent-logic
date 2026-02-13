@@ -58,6 +58,8 @@ Both scripts:
 2.  Runs each prompt in the test suite against each model.
 3.  Saves the full conversation log for each model to a separate JSON file in `evaluation_results/scratch/` or `evaluation_results/strands/`.
 4.  Loads prompts from `prompts.json` by default (configurable with `--prompts`).
+5.  Produces a canonical snapshot per run (Google Geocoding + OpenWeather) in `evaluation_results/canonical/`.
+6.  Produces a sidecar validation file per prompt with provenance (`parametric` vs `tool-assisted`) and verification results.
 
 ### 4. Analyze the Results
 

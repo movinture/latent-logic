@@ -1,13 +1,23 @@
 {
-  "version": "2026-02-11",
+  "version": "2026-02-12",
   "prompts": [
     {
       "name": "current_weather_new_york_city",
-      "text": "What is the current weather in New York City?"
+      "text": "What is the current weather in New York City?",
+      "type": "weather",
+      "location": "New York City, NY",
+      "validation": {
+        "max_diff_c": 3.0
+      }
     },
     {
       "name": "lat_lon_times_square",
-      "text": "Can you get me the latitude and longitude for Times Square in New York City?"
+      "text": "Can you get me the latitude and longitude for Times Square in New York City?",
+      "type": "location",
+      "location": "Times Square, New York City",
+      "validation": {
+        "max_km": 1.0
+      }
     }
   ]
 }

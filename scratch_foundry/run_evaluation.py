@@ -8,6 +8,13 @@ import logging
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from scratch_foundry.httpAgent import create_agent
+from evaluation_utils import (
+    load_prompts,
+    detect_tool_use_scratch,
+    validate_result,
+    classify_provenance,
+    build_canonical_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +38,21 @@ def sanitize_filename(text: str) -> str:
     s = re.sub(r'(?u)[^-\w.]', '', s)
     return s
 
-def load_prompts(prompt_file: str) -> list[dict[str, str]]:
-    with open(prompt_file, "r") as f:
-        data = json.load(f)
-    return data["prompts"]
-
-
 def run_evaluation(models: list[str], prompt_file: str):
     """
     Runs the evaluation suite against a list of models.
     """
-    prompts = load_prompts(prompt_file)
+    prompt_data = load_prompts(prompt_file)
+    prompts = prompt_data["prompts"]
+    prompt_version = prompt_data.get("version", "unknown")
+
+    canonical_snapshot = build_canonical_snapshot(prompt_data)
+    canonical_dir = os.path.join("evaluation_results", "canonical")
+    os.makedirs(canonical_dir, exist_ok=True)
+    canonical_path = os.path.join(canonical_dir, f"canonical_{prompt_version}.json")
+    with open(canonical_path, "w") as f:
+        json.dump(canonical_snapshot, f, indent=2)
+    logger.info("Canonical snapshot saved to %s", canonical_path)
     
     results_root = os.path.join("evaluation_results", "scratch")
     if not os.path.exists(results_root):
@@ -75,7 +86,30 @@ def run_evaluation(models: list[str], prompt_file: str):
                             messages_as_dict.append(message)
                     json.dump(messages_as_dict, f, indent=2)
 
+                # Validation + provenance (sidecar)
+                tool_used, tool_names = detect_tool_use_scratch(messages_as_dict)
+                validation = validate_result(prompt_obj, response, canonical_snapshot)
+                provenance = classify_provenance(tool_used, validation)
+
+                validation_path = os.path.join(model_results_dir, f"{prompt_name}_validation.json")
+                with open(validation_path, "w") as f:
+                    json.dump(
+                        {
+                            "model": model_name,
+                            "prompt_name": prompt_name,
+                            "prompt_version": prompt_version,
+                            "canonical": canonical_snapshot["prompts"].get(prompt_name, {}),
+                            "tool_used": tool_used,
+                            "tool_names": tool_names,
+                            "provenance": provenance,
+                            "validation": validation,
+                        },
+                        f,
+                        indent=2,
+                    )
+
                 logger.info("    Results saved to %s", log_path)
+                logger.info("    Validation saved to %s", validation_path)
 
             except Exception as e:
                 logger.exception(

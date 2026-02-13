@@ -66,6 +66,22 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 - Runner: `strands_foundry/run_strands_evaluation.py`.
 - Results: `evaluation_results/strands/<model>/...`.
 
+### Canonical Validation
+- Shared utilities are in `evaluation_utils.py`.
+- Canonical providers:
+  - Geocoding: Google Geocoding API (`GOOGLE_GEOCODING_API_KEY`)
+  - Weather: OpenWeather API (`OPENWEATHER_API_KEY`)
+- Each run builds a canonical snapshot and saves it under `evaluation_results/canonical/canonical_<prompt_version>.json`.
+- Each model/prompt output writes a validation sidecar alongside the result JSON.
+- Validation currently checks:
+  - Weather temperature difference vs canonical (`max_diff_c`)
+  - Location coordinate distance vs canonical (`max_km`)
+- Provenance labels are written as:
+  - `parametric`
+  - `tool-assisted`
+  - `hybrid_or_failed`
+- Rubric scoring from `docs/EVALUATION_PLAN.md` is not yet auto-computed into numeric scores in result artifacts.
+
 ## Tool-Calling Nuances
 - **DeepSeek-V3.2:** Requires JSON tool-call format (`tool_name`, `tool_arguments`).
 - **Kimi + GPT models:** Use standard OpenAI `tool_calls`.
@@ -109,3 +125,5 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 
 ## Output and Artifacts
 - Evaluation logs are written as JSON to `evaluation_results/scratch` and `evaluation_results/strands`.
+- Canonical snapshots are written to `evaluation_results/canonical`.
+- Validation sidecars are written next to each prompt result JSON in both scratch and Strands runs.
