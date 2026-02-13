@@ -70,6 +70,40 @@ Run example:
 uv run strands_foundry/run_strands_evaluation.py --models "Kimi-K2.5" "Kimi-K2-Thinking"
 ```
 
+## Evaluation Workflow
+
+1. Validate canonical providers and keys:
+```bash
+uv run scripts/canonical_check.py
+```
+
+2. Run scratch evaluation:
+```bash
+uv run scratch_foundry/run_evaluation.py \
+  --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2-Thinking" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
+  --prompts prompts.json
+```
+
+3. Run Strands evaluation:
+```bash
+uv run strands_foundry/run_strands_evaluation.py \
+  --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2-Thinking" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
+  --prompts prompts.json
+```
+
+4. Generate model-insights block for documentation:
+```bash
+uv run scripts/generate_model_insights_block.py \
+  --tag "latent-logic_eval_YYYY-MM-DD_<label>" \
+  --append docs/MODEL_INSIGHTS.md
+```
+
+Outputs:
+- Results: `evaluation_results/scratch/` and `evaluation_results/strands/`
+- Canonical snapshots: `evaluation_results/canonical/`
+- Comparison summaries: `evaluation_results/latest_comparison_summary.json`, `evaluation_results/latest_runtime_summary.json`
+- Logs: `logs/scratch_evaluation.log`, `logs/strands_evaluation.log`
+
 
 
 ## Where to Look Next
