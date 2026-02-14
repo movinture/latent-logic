@@ -71,16 +71,34 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 - Canonical providers:
   - Geocoding: Google Geocoding API (`GOOGLE_GEOCODING_API_KEY`)
   - Weather: OpenWeather API (`OPENWEATHER_API_KEY`)
+  - ISS position: `wheretheiss.at`
+  - FX rate: `open.er-api.com`
 - Each run builds a canonical snapshot and saves it under `evaluation_results/canonical/canonical_<prompt_version>.json`.
 - Each model/prompt output writes a validation sidecar alongside the result JSON.
 - Validation currently checks:
   - Weather temperature difference vs canonical (`max_diff_c`)
   - Location coordinate distance vs canonical (`max_km`)
+  - ISS position with time-aware distance validation (nearest/interpolated canonical position and dynamic allowance)
+  - USD/EUR exchange rate difference vs canonical (`max_diff`)
 - Provenance labels are written as:
   - `parametric`
   - `tool-assisted`
   - `hybrid_or_failed`
+  - `unverified_parametric` / `unverified_tool_used` (for prompt types without validators)
+- Validation sidecars also include `data_hints` extracted from tool I/O for freshness/source clarity (tool URLs and date/time hints).
 - Rubric scoring from `docs/EVALUATION_PLAN.md` is not yet auto-computed into numeric scores in result artifacts.
+
+### Comparison Tooling
+- Deterministic cross-framework comparison script: `scripts/compare_framework_runs.py`.
+- It selects the best-coverage Strands run for the requested model/prompt matrix and compares it against scratch.
+- It emits:
+  - `evaluation_results/latest_comparison_summary.json`
+  - `evaluation_results/analysis/comparison_<timestamp>.json`
+  - `evaluation_results/analysis/comparison_<timestamp>.md`
+  - `evaluation_results/analysis/llm_report_prompt_<timestamp>.md`
+- CSV exporter: `scripts/export_comparison_tables.py`, which writes:
+  - `evaluation_results/analysis/turns_and_tools_<timestamp>.csv`
+  - `evaluation_results/analysis/model_aggregate_<timestamp>.csv`
 
 ## Tool-Calling Nuances
 - **DeepSeek-V3.2:** Requires JSON tool-call format (`tool_name`, `tool_arguments`).

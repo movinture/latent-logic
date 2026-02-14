@@ -1,10 +1,19 @@
 {
-  "version": "2026-02-12",
+  "version": "2026-02-14",
   "prompts": [
     {
       "name": "current_weather_new_york_city",
       "text": "What is the current weather in New York City?",
       "type": "weather",
+      "location": "New York City, NY",
+      "validation": {
+        "max_diff_c": 3.0
+      }
+    },
+    {
+      "name": "current_temperature_new_york_city",
+      "text": "What is the current temperature in New York City? Return the temperature in Celsius.",
+      "type": "temperature",
       "location": "New York City, NY",
       "validation": {
         "max_diff_c": 3.0
@@ -17,6 +26,36 @@
       "location": "Times Square, New York City",
       "validation": {
         "max_km": 1.0
+      }
+    },
+    {
+      "name": "lat_lon_bluebells_school_delhi",
+      "text": "Can you get me the latitude and longitude for Bluebells School in Delhi, India?",
+      "type": "location",
+      "location": "Bluebells School, Delhi, India",
+      "validation": {
+        "max_km": 3.0
+      }
+    },
+    {
+      "name": "iss_current_position",
+      "text": "Where is the International Space Station (ISS) right now? Return its latitude and longitude.",
+      "type": "iss",
+      "validation": {
+        "base_km": 100.0,
+        "speed_kmps": 7.66,
+        "uncertainty_factor": 1.3,
+        "grace_seconds": 10
+      }
+    },
+    {
+      "name": "usd_eur_exchange_rate",
+      "text": "What is the current USD to EUR exchange rate? Return only the rate and source used.",
+      "type": "exchange_rate",
+      "base_currency": "USD",
+      "quote_currency": "EUR",
+      "validation": {
+        "max_diff": 0.03
       }
     }
   ]

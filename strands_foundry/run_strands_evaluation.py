@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import logging
+import time
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ from evaluation_utils import (
     validate_result,
     classify_provenance,
     build_canonical_snapshot,
+    extract_data_hints_strands,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,10 +46,27 @@ def sanitize_filename(text: str) -> str:
     return s
 
 
-def extract_text(message: dict) -> str:
+def extract_text(message: dict) -> tuple[str, str]:
     blocks = message.get("content", [])
     parts = [block.get("text", "") for block in blocks if "text" in block]
-    return "\n".join([p for p in parts if p])
+    text = "\n".join([p for p in parts if p]).strip()
+    if text:
+        return text, "text"
+
+    # Some models return final answer only in reasoningContent; use it as a fallback
+    # to avoid false negatives in downstream validation.
+    reasoning_parts: list[str] = []
+    for block in blocks:
+        reasoning = block.get("reasoningContent", {})
+        reasoning_text = reasoning.get("reasoningText", {})
+        candidate = reasoning_text.get("text")
+        if isinstance(candidate, str) and candidate.strip():
+            reasoning_parts.append(candidate.strip())
+
+    fallback_text = "\n".join(reasoning_parts).strip()
+    if fallback_text:
+        return fallback_text, "reasoning_fallback"
+    return "", "empty"
 
 
 def create_agent(model_name: str) -> Agent:
@@ -102,6 +121,7 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
                 result = agent(prompt_text)
 
                 log_path = os.path.join(model_results_dir, f"{prompt_name}_{run_id}.json")
+                final_text, final_text_source = extract_text(result.message)
                 payload = {
                     "model": model_name,
                     "prompt_name": prompt_name,
@@ -109,7 +129,8 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
                     "prompt_text": prompt_text,
                     "stop_reason": result.stop_reason,
                     "final_message": result.message,
-                    "final_text": extract_text(result.message),
+                    "final_text": final_text,
+                    "final_text_source": final_text_source,
                     "messages": agent.messages,
                 }
 
@@ -118,8 +139,15 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
 
                 # Validation + provenance (sidecar)
                 tool_used, tool_names = detect_tool_use_strands(agent.messages)
-                validation = validate_result(prompt_obj, payload["final_text"], canonical_snapshot)
+                eval_time_unix = int(time.time())
+                validation = validate_result(
+                    prompt_obj,
+                    payload["final_text"],
+                    canonical_snapshot,
+                    eval_time_unix=eval_time_unix,
+                )
                 provenance = classify_provenance(tool_used, validation)
+                data_hints = extract_data_hints_strands(agent.messages)
 
                 validation_path = os.path.join(model_results_dir, f"{prompt_name}_{run_id}_validation.json")
                 with open(validation_path, "w") as f:
@@ -132,6 +160,8 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
                             "tool_used": tool_used,
                             "tool_names": tool_names,
                             "provenance": provenance,
+                            "eval_time_unix": eval_time_unix,
+                            "data_hints": data_hints,
                             "validation": validation,
                         },
                         f,

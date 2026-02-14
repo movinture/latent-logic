@@ -1,22 +1,26 @@
-# Subjective Evaluation Plan for LLMs
+# Evaluation Plan for LLM Comparison
 
-This document outlines a plan for using the scratch agent to subjectively evaluate and compare the capabilities of different LLMs.
+This document describes the current evaluation workflow to compare model capabilities (reasoning, tool use, recovery, and parametric knowledge) across both agent loops.
 
 ### 1. Define a Standardized Test Suite
 
-We will use an iterative approach to build our test suite. We will start with a simple test case and then add more complex ones as we go.
+Prompts are externalized in `prompts.json` (versioned). Current suite includes:
 
-**Phase 1: Simple Tool Use**
+*   `current_weather_new_york_city` (`type: weather`)
+*   `current_temperature_new_york_city` (`type: temperature`)
+*   `lat_lon_times_square` (`type: location`)
+*   `lat_lon_bluebells_school_delhi` (`type: location`, esoteric variant)
+*   `iss_current_position` (`type: iss`)
+*   `usd_eur_exchange_rate` (`type: exchange_rate`)
 
-*   **Prompt 1 (Current Weather):** "What is the current weather in New York City?"
-*   **Goal:** Tests the agent's ability to use the `http_request` tool to get information from a public API.
-
-*   **Prompt 2 (Location Query):** "Can you get me the latitude and longitude for Times Square in New York City?"
-*   **Goal:** Tests the model's parametric knowledge and its ability to resolve ambiguities in location queries, potentially using an HTTP tool or internal knowledge.
+The suite intentionally mixes:
+*   common vs esoteric location queries
+*   static-ish vs highly dynamic data
+*   direct retrieval vs multi-step tool behavior
 
 ### 2. Create a Standardized Evaluation Rubric
 
-We can create a rubric to score the agent's performance on each prompt. The rubric would have different criteria, each with a scoring scale (e.g., 1-5).
+Rubric scoring is still planned (manual/subjective today). Current automated validation provides objective signals; rubric adds subjective quality grading.
 
 **Evaluation Criteria:**
 
@@ -58,9 +62,37 @@ Both scripts:
 2.  Runs each prompt in the test suite against each model.
 3.  Saves the full conversation log for each model to a separate JSON file in `evaluation_results/scratch/` or `evaluation_results/strands/`.
 4.  Loads prompts from `prompts.json` by default (configurable with `--prompts`).
-5.  Produces a canonical snapshot per run (Google Geocoding + OpenWeather) in `evaluation_results/canonical/`.
-6.  Produces a sidecar validation file per prompt with provenance (`parametric` vs `tool-assisted`) and verification results.
+5.  Produces a canonical snapshot per run in `evaluation_results/canonical/`.
+6.  Produces a sidecar validation file per prompt with provenance + verification fields.
+
+Canonical providers currently used:
+*   Location: Google Geocoding
+*   Weather/Temperature: OpenWeather
+*   ISS: `wheretheiss.at`
+*   FX: `open.er-api.com`
+
+ISS validation is time-aware (nearest/interpolated canonical position with dynamic distance allowance).  
+Sidecars also include:
+*   `eval_time_unix`
+*   `data_hints` (tool URLs + date/time hints extracted from tool I/O)
 
 ### 4. Analyze the Results
 
-After running the tests, we can manually review the conversation logs and use the evaluation rubric to score each model's performance. The results can then be compiled into a comparison table, which would provide a clear overview of the strengths and weaknesses of each model.
+Use deterministic comparison tooling first, then optional subjective analysis.
+
+1. Deterministic comparison:
+*   `scripts/compare_framework_runs.py`
+*   Produces:
+    * `evaluation_results/latest_comparison_summary.json`
+    * `evaluation_results/analysis/comparison_<timestamp>.json`
+    * `evaluation_results/analysis/comparison_<timestamp>.md`
+    * `evaluation_results/analysis/llm_report_prompt_<timestamp>.md`
+
+2. CSV exports for easier scanning:
+*   `scripts/export_comparison_tables.py`
+*   Produces:
+    * `evaluation_results/analysis/turns_and_tools_<timestamp>.csv`
+    * `evaluation_results/analysis/model_aggregate_<timestamp>.csv`
+
+3. Subjective/rubric pass (optional):
+*   Use generated artifacts to evaluate response quality, reasoning style, and notable behavioral patterns.

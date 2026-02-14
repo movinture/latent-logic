@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import logging
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -14,6 +15,7 @@ from evaluation_utils import (
     validate_result,
     classify_provenance,
     build_canonical_snapshot,
+    extract_data_hints_scratch,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,8 +90,10 @@ def run_evaluation(models: list[str], prompt_file: str):
 
                 # Validation + provenance (sidecar)
                 tool_used, tool_names = detect_tool_use_scratch(messages_as_dict)
-                validation = validate_result(prompt_obj, response, canonical_snapshot)
+                eval_time_unix = int(time.time())
+                validation = validate_result(prompt_obj, response, canonical_snapshot, eval_time_unix=eval_time_unix)
                 provenance = classify_provenance(tool_used, validation)
+                data_hints = extract_data_hints_scratch(messages_as_dict)
 
                 validation_path = os.path.join(model_results_dir, f"{prompt_name}_validation.json")
                 with open(validation_path, "w") as f:
@@ -102,6 +106,8 @@ def run_evaluation(models: list[str], prompt_file: str):
                             "tool_used": tool_used,
                             "tool_names": tool_names,
                             "provenance": provenance,
+                            "eval_time_unix": eval_time_unix,
+                            "data_hints": data_hints,
                             "validation": validation,
                         },
                         f,

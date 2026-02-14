@@ -98,10 +98,24 @@ uv run scripts/generate_model_insights_block.py \
   --append docs/MODEL_INSIGHTS.md
 ```
 
+5. Generate deterministic cross-framework comparison and LLM report bundle:
+```bash
+uv run scripts/compare_framework_runs.py \
+  --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
+  --prompts prompts.json
+```
+
+6. Export easy-to-scan CSV tables (turns/tool calls + model aggregates):
+```bash
+python3 scripts/export_comparison_tables.py
+```
+
 Outputs:
 - Results: `evaluation_results/scratch/` and `evaluation_results/strands/`
 - Canonical snapshots: `evaluation_results/canonical/`
 - Comparison summaries: `evaluation_results/latest_comparison_summary.json`, `evaluation_results/latest_runtime_summary.json`
+- Deterministic analysis bundles: `evaluation_results/analysis/comparison_*.json`, `evaluation_results/analysis/comparison_*.md`, `evaluation_results/analysis/llm_report_prompt_*.md`
+- CSV exports: `evaluation_results/analysis/turns_and_tools_*.csv`, `evaluation_results/analysis/model_aggregate_*.csv`
 - Logs: `logs/scratch_evaluation.log`, `logs/strands_evaluation.log`
 
 
