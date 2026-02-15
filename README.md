@@ -54,20 +54,20 @@ uv run gemini/scratchAgentStep4.py
 
 ### Scratch (Foundry)
 - Script: `scratch_foundry/run_evaluation.py`
-- Results: `evaluation_results/scratch/<model>/...`
+- Results: `evaluation_results/runs/<run_group>/scratch/<model>/...`
 
 Run example:
 ```bash
-uv run scratch_foundry/run_evaluation.py --models "Kimi-K2.5" "Kimi-K2-Thinking"
+uv run scratch_foundry/run_evaluation.py --run-group 20260214_nightly --models "Kimi-K2.5" "Kimi-K2-Thinking"
 ```
 
 ### Strands (Foundry)
 - Script: `strands_foundry/run_strands_evaluation.py`
-- Results: `evaluation_results/strands/<model>/...`
+- Results: `evaluation_results/runs/<run_group>/strands/<model>/...`
 
 Run example:
 ```bash
-uv run strands_foundry/run_strands_evaluation.py --models "Kimi-K2.5" "Kimi-K2-Thinking"
+uv run strands_foundry/run_strands_evaluation.py --run-group 20260214_nightly --models "Kimi-K2.5" "Kimi-K2-Thinking"
 ```
 
 ## Evaluation Workflow
@@ -80,6 +80,7 @@ uv run scripts/canonical_check.py
 2. Run scratch evaluation:
 ```bash
 uv run scratch_foundry/run_evaluation.py \
+  --run-group 20260214_nightly \
   --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2-Thinking" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
   --prompts prompts.json
 ```
@@ -87,6 +88,7 @@ uv run scratch_foundry/run_evaluation.py \
 3. Run Strands evaluation:
 ```bash
 uv run strands_foundry/run_strands_evaluation.py \
+  --run-group 20260214_nightly \
   --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2-Thinking" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
   --prompts prompts.json
 ```
@@ -101,22 +103,30 @@ uv run scripts/generate_model_insights_block.py \
 5. Generate deterministic cross-framework comparison and LLM report bundle:
 ```bash
 uv run scripts/compare_framework_runs.py \
+  --run-group 20260214_nightly \
   --models "gpt-4.1-mini" "DeepSeek-V3.2" "grok-4-fast-reasoning" "Kimi-K2.5" "gpt-4o" "Mistral-Large-3" "gpt-4.1" \
   --prompts prompts.json
 ```
 
 6. Export easy-to-scan CSV tables (turns/tool calls + model aggregates):
 ```bash
-python3 scripts/export_comparison_tables.py
+python3 scripts/export_comparison_tables.py --run-group 20260214_nightly
+```
+
+7. Build an LLM-ready analysis package (context + artifacts + logs):
+```bash
+python3 scripts/build_llm_analysis_package.py --run-group 20260214_nightly
 ```
 
 Outputs:
-- Results: `evaluation_results/scratch/` and `evaluation_results/strands/`
-- Canonical snapshots: `evaluation_results/canonical/`
-- Comparison summaries: `evaluation_results/latest_comparison_summary.json`, `evaluation_results/latest_runtime_summary.json`
-- Deterministic analysis bundles: `evaluation_results/analysis/comparison_*.json`, `evaluation_results/analysis/comparison_*.md`, `evaluation_results/analysis/llm_report_prompt_*.md`
-- CSV exports: `evaluation_results/analysis/turns_and_tools_*.csv`, `evaluation_results/analysis/model_aggregate_*.csv`
-- Logs: `logs/scratch_evaluation.log`, `logs/strands_evaluation.log`
+- Per-run manifest + config: `evaluation_results/runs/<run_group>/manifest.json`
+- Results: `evaluation_results/runs/<run_group>/scratch/` and `evaluation_results/runs/<run_group>/strands/`
+- Canonical snapshots: `evaluation_results/runs/<run_group>/canonical/`
+- Deterministic analysis bundles: `evaluation_results/runs/<run_group>/analysis/comparison_*.json`, `evaluation_results/runs/<run_group>/analysis/comparison_*.md`
+- Interpretation guide for humans/LLMs: `evaluation_results/runs/<run_group>/analysis/interpretation_guide_*.md`
+- CSV exports: `evaluation_results/runs/<run_group>/analysis/turns_and_tools_*.csv`, `evaluation_results/runs/<run_group>/analysis/model_aggregate_*.csv`
+- LLM package: `evaluation_results/runs/<run_group>/analysis/llm_analysis_packet_<timestamp>/`
+- Logs: `evaluation_results/runs/<run_group>/logs/scratch_evaluation.log`, `evaluation_results/runs/<run_group>/logs/strands_evaluation.log`
 
 
 
@@ -124,11 +134,13 @@ Outputs:
 
 - Technical deep dive: `docs/TECHNICAL_NOTES.md`
 - Evaluation plan: `docs/EVALUATION_PLAN.md`
+- Evaluation terminology: `docs/EVALUATION_GLOSSARY.md`
+- Results review workflow: `docs/RESULTS_REVIEW_GUIDE.md`
 
 
 ## Logging
 
-All scripts log to console and `logs/`.
+All evaluation scripts log to console and per-run log files under `evaluation_results/runs/<run_group>/logs/`.
 
 ## Validation
 

@@ -8,6 +8,37 @@ from typing import Any
 import requests
 
 
+def _get_json_with_retry(
+    url: str,
+    params: dict[str, Any] | None = None,
+    timeout: int = 20,
+    retries: int = 2,
+    backoff_s: float = 1.0,
+) -> dict[str, Any]:
+    last_err: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(backoff_s * (attempt + 1))
+            else:
+                break
+    raise RuntimeError(f"Request failed for {url}: {last_err}")
+
+
+def _canonical_error_entry(prompt_type: str, query: str | None, err: Exception) -> dict[str, Any]:
+    return {
+        "type": prompt_type,
+        "query": query,
+        "canonical": {},
+        "canonical_error": str(err),
+    }
+
+
 def load_prompts(prompt_file: str) -> dict:
     with open(prompt_file, "r") as f:
         return json.load(f)
@@ -97,9 +128,7 @@ def fetch_canonical_geocode(query: str) -> dict[str, Any]:
         raise RuntimeError("GOOGLE_GEOCODING_API_KEY is required for canonical geocoding.")
 
     url = "https://maps.googleapis.com/maps/api/geocode/json"
-    resp = requests.get(url, params={"address": query, "key": key}, timeout=20)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _get_json_with_retry(url, params={"address": query, "key": key}, timeout=20)
     if data.get("status") != "OK" or not data.get("results"):
         raise RuntimeError(f"Geocoding failed: {data.get('status')} {data.get('error_message', '')}")
 
@@ -117,9 +146,7 @@ def fetch_canonical_weather(lat: float, lon: float) -> dict[str, Any]:
         raise RuntimeError("OPENWEATHER_API_KEY is required for canonical weather validation.")
 
     url = "https://api.openweathermap.org/data/2.5/weather"
-    resp = requests.get(url, params={"lat": lat, "lon": lon, "appid": key, "units": "metric"}, timeout=20)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _get_json_with_retry(url, params={"lat": lat, "lon": lon, "appid": key, "units": "metric"}, timeout=20)
     temp_c = data.get("main", {}).get("temp")
     if temp_c is None:
         raise RuntimeError("OpenWeather response missing temperature.")
@@ -132,9 +159,7 @@ def fetch_canonical_weather(lat: float, lon: float) -> dict[str, Any]:
 
 def fetch_canonical_iss_position() -> dict[str, Any]:
     url = "https://api.wheretheiss.at/v1/satellites/25544"
-    resp = requests.get(url, timeout=20)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _get_json_with_retry(url, timeout=20)
     lat = data.get("latitude")
     lon = data.get("longitude")
     ts = data.get("timestamp")
@@ -150,9 +175,7 @@ def fetch_canonical_iss_position() -> dict[str, Any]:
 
 def fetch_canonical_fx_rate(base: str, quote: str) -> dict[str, Any]:
     url = f"https://open.er-api.com/v6/latest/{base.upper()}"
-    resp = requests.get(url, timeout=20)
-    resp.raise_for_status()
-    data = resp.json()
+    data = _get_json_with_retry(url, timeout=20)
     if data.get("result") != "success":
         raise RuntimeError(f"FX canonical request failed: {data.get('result')}")
     rate = data.get("rates", {}).get(quote.upper())
@@ -176,49 +199,51 @@ def build_canonical_snapshot(prompt_data: dict) -> dict[str, Any]:
     for prompt in prompt_data.get("prompts", []):
         name = prompt["name"]
         prompt_type = prompt.get("type")
-        if prompt_type == "location":
-            query = prompt.get("location") or prompt.get("text")
-            snapshot["prompts"][name] = {
-                "type": "location",
-                "query": query,
-                "canonical": fetch_canonical_geocode(query),
-            }
-        elif prompt_type in {"weather", "temperature"}:
-            query = prompt.get("location") or prompt.get("text")
-            geo = fetch_canonical_geocode(query)
-            weather = fetch_canonical_weather(geo["lat"], geo["lon"])
-            snapshot["prompts"][name] = {
-                "type": prompt_type,
-                "query": query,
-                "canonical": {
-                    "lat": geo["lat"],
-                    "lon": geo["lon"],
-                    "temp_c": weather["temp_c"],
-                    "geo_provider": geo["provider"],
-                    "weather_provider": weather["provider"],
-                },
-            }
-        elif prompt_type == "iss":
-            snapshot["prompts"][name] = {
-                "type": "iss",
-                "query": prompt.get("text"),
-                "canonical": fetch_canonical_iss_position(),
-            }
-        elif prompt_type == "exchange_rate":
-            base = (prompt.get("base_currency") or "USD").upper()
-            quote = (prompt.get("quote_currency") or "EUR").upper()
-            snapshot["prompts"][name] = {
-                "type": "exchange_rate",
-                "query": prompt.get("text"),
-                "canonical": fetch_canonical_fx_rate(base, quote),
-            }
-        else:
-            # Experimental prompts can run without canonical validation.
-            snapshot["prompts"][name] = {
-                "type": prompt_type,
-                "query": prompt.get("location") or prompt.get("text"),
-                "canonical": {},
-            }
+        query = prompt.get("location") or prompt.get("text")
+        try:
+            if prompt_type == "location":
+                snapshot["prompts"][name] = {
+                    "type": "location",
+                    "query": query,
+                    "canonical": fetch_canonical_geocode(query),
+                }
+            elif prompt_type in {"weather", "temperature"}:
+                geo = fetch_canonical_geocode(query)
+                weather = fetch_canonical_weather(geo["lat"], geo["lon"])
+                snapshot["prompts"][name] = {
+                    "type": prompt_type,
+                    "query": query,
+                    "canonical": {
+                        "lat": geo["lat"],
+                        "lon": geo["lon"],
+                        "temp_c": weather["temp_c"],
+                        "geo_provider": geo["provider"],
+                        "weather_provider": weather["provider"],
+                    },
+                }
+            elif prompt_type == "iss":
+                snapshot["prompts"][name] = {
+                    "type": "iss",
+                    "query": prompt.get("text"),
+                    "canonical": fetch_canonical_iss_position(),
+                }
+            elif prompt_type == "exchange_rate":
+                base = (prompt.get("base_currency") or "USD").upper()
+                quote = (prompt.get("quote_currency") or "EUR").upper()
+                snapshot["prompts"][name] = {
+                    "type": "exchange_rate",
+                    "query": prompt.get("text"),
+                    "canonical": fetch_canonical_fx_rate(base, quote),
+                }
+            else:
+                # Experimental prompts can run without canonical validation.
+                snapshot["prompts"][name] = {
+                    "type": prompt_type,
+                    "query": query,
+                    "canonical": {},
+                }
+        except Exception as e:
+            snapshot["prompts"][name] = _canonical_error_entry(prompt_type or "unknown", query, e)
 
     return snapshot
 
@@ -323,16 +348,24 @@ def validate_iss(
     if t0 is None or lat0 is None or lon0 is None:
         return {"valid": False, "reason": "no_canonical_iss_snapshot"}
 
-    # second sample near evaluation time
-    sample_1 = fetch_canonical_iss_position()
-    t1 = sample_1["timestamp"]
-    lat1 = sample_1["lat"]
-    lon1 = sample_1["lon"]
+    # second sample near evaluation time (best-effort)
+    t1 = t0
+    lat1 = lat0
+    lon1 = lon0
+    second_sample_ok = False
+    try:
+        sample_1 = fetch_canonical_iss_position()
+        t1 = sample_1["timestamp"]
+        lat1 = sample_1["lat"]
+        lon1 = sample_1["lon"]
+        second_sample_ok = True
+    except Exception:
+        second_sample_ok = False
 
     # select or interpolate expected position at eval_time_unix
     if abs(eval_time_unix - t0) <= grace_seconds:
         exp_lat, exp_lon, mode = float(lat0), float(lon0), "snapshot_near_eval"
-    elif t1 != t0 and min(t0, t1) <= eval_time_unix <= max(t0, t1):
+    elif second_sample_ok and t1 != t0 and min(t0, t1) <= eval_time_unix <= max(t0, t1):
         ratio = (eval_time_unix - t0) / (t1 - t0)
         exp_lat = _lerp(float(lat0), float(lat1), ratio)
         exp_lon = _lerp(float(lon0), float(lon1), ratio)
@@ -360,8 +393,9 @@ def validate_iss(
         "delta_s": int(delta_s),
         "eval_time_unix": int(eval_time_unix),
         "canonical_t0_unix": int(t0),
-        "canonical_t1_unix": int(t1),
+        "canonical_t1_unix": int(t1) if second_sample_ok else None,
         "method": mode,
+        "second_sample_ok": second_sample_ok,
     }
 
 
@@ -425,7 +459,15 @@ def validate_result(
 ) -> dict[str, Any]:
     canonical_entry = canonical_snapshot.get("prompts", {}).get(prompt_meta["name"], {})
     canonical = canonical_entry.get("canonical", {})
+    canonical_error = canonical_entry.get("canonical_error")
     validation_cfg = prompt_meta.get("validation", {})
+
+    if canonical_error:
+        return {
+            "valid": None,
+            "reason": "canonical_unavailable",
+            "canonical_error": canonical_error,
+        }
 
     prompt_type = prompt_meta.get("type")
     if prompt_type in {"weather", "temperature"}:

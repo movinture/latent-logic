@@ -2,11 +2,11 @@
 """Deterministic model-first comparison across scratch and Strands evaluation artifacts.
 
 Outputs:
-- evaluation_results/latest_comparison_summary.json
-- evaluation_results/latest_runtime_summary.json (placeholder-compatible structure)
-- evaluation_results/analysis/comparison_<timestamp>.json
-- evaluation_results/analysis/comparison_<timestamp>.md
-- evaluation_results/analysis/llm_report_prompt_<timestamp>.md
+- evaluation_results/runs/<run_group>/latest_comparison_summary.json
+- evaluation_results/runs/<run_group>/latest_runtime_summary.json
+- evaluation_results/runs/<run_group>/analysis/comparison_<timestamp>.json
+- evaluation_results/runs/<run_group>/analysis/comparison_<timestamp>.md
+- evaluation_results/runs/<run_group>/analysis/interpretation_guide_<timestamp>.md
 """
 
 from __future__ import annotations
@@ -174,6 +174,18 @@ def summarize_model(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _fmt_provenance(prov: dict[str, int]) -> str:
+    keys = [
+        "parametric",
+        "tool-assisted",
+        "hybrid_or_failed",
+        "unverified_parametric",
+        "unverified_tool_used",
+    ]
+    parts = [f"{k}:{prov.get(k, 0)}" for k in keys if prov.get(k, 0)]
+    return ", ".join(parts) if parts else "none"
+
+
 def build_markdown(summary: dict[str, Any], out_json_path: Path) -> str:
     lines: list[str] = []
     meta = summary["metadata"]
@@ -189,8 +201,13 @@ def build_markdown(summary: dict[str, Any], out_json_path: Path) -> str:
 
     lines.append("## Headline")
     ov = summary["overall"]
+    expected = summary["metadata"]["expected_pairs_per_framework"]
+    lines.append(f"- Expected pairs per framework: `{expected}`")
     lines.append(f"- Scratch valid (verified): `{ov['scratch_valid_verified']}/{ov['scratch_verified']}`")
     lines.append(f"- Strands valid (verified): `{ov['strands_valid_verified']}/{ov['strands_verified']}`")
+    lines.append(f"- Scratch unverified: `{expected - ov['scratch_verified']}`")
+    lines.append(f"- Strands unverified: `{expected - ov['strands_verified']}`")
+    lines.append(f"- Missing artifacts: `{len(summary['missing'])}`")
     lines.append(f"- Pairwise wins: scratch `{ov['scratch_wins']}`, strands `{ov['strands_wins']}`, ties `{ov['ties']}`")
     lines.append("")
 
@@ -199,6 +216,7 @@ def build_markdown(summary: dict[str, Any], out_json_path: Path) -> str:
         s = data["scratch"]
         t = data["strands"]
         lines.append(f"- `{model}`: scratch `{s['valid_runs']}/{s['verified_runs']}`, strands `{t['valid_runs']}/{t['verified_runs']}`; turns scratch `{s['avg_assistant_turns']}`, strands `{t['avg_assistant_turns']}`")
+        lines.append(f"  provenance scratch `{_fmt_provenance(s.get('provenance', {}))}` | strands `{_fmt_provenance(t.get('provenance', {}))}`")
     lines.append("")
 
     lines.append("## Notes")
@@ -207,34 +225,63 @@ def build_markdown(summary: dict[str, Any], out_json_path: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_llm_prompt(summary_path: Path, markdown_path: Path) -> str:
-    return f"""# Task: Generate Standardized Evaluation Report
+def build_interpretation_guide(summary: dict[str, Any], summary_path: Path, markdown_path: Path) -> str:
+    meta = summary["metadata"]
+    ov = summary["overall"]
+    expected = meta["expected_pairs_per_framework"]
+    return f"""# Evaluation Interpretation Guide
 
-You are given a deterministic JSON comparison summary at:
-`{summary_path}`
+## Run Context
+- Run group: `{meta.get('run_group')}`
+- Generated at (UTC): `{meta.get('generated_at_utc')}`
+- Prompt file: `{meta.get('prompt_file')}`
+- Strands run id: `{meta.get('strands_run_id')}`
+- Models: {", ".join(meta.get("models", []))}
+- Prompts: {", ".join(meta.get("prompt_names", []))}
 
-There is also a concise markdown snapshot at:
-`{markdown_path}`
+## Framework Context
+- `scratch`: custom loop in `scratch_foundry/foundryAgent.py` + local tool wiring.
+- `strands`: Strands agent loop with provider adapter in `strands_foundry/customprovider/`.
 
-## Objective
-Write a model-first report that:
-1. Ranks models by verified correctness and robustness.
-2. Explains framework effects (scratch vs strands) as secondary analysis.
-3. Separates parametric vs tool-assisted behavior.
-4. Highlights surprising patterns and likely root causes.
-5. Distinguishes objective findings from interpretation.
+## Metric Glossary
+- `expected_pairs_per_framework`: `#models * #prompts`.
+- `verified`: rows where `validation.valid` is boolean (`true`/`false`).
+- `unverified`: rows where `validation.valid` is `null` (for example canonical unavailable).
+- `valid`: verified rows with `validation.valid == true`.
+- `runs` (model-level): number of prompt records found for that model/framework.
+- `verified_runs` (model-level): subset of `runs` with boolean validation.
+- `valid_runs` (model-level): subset of `verified_runs` with `true`.
+- `valid_rate_verified`: `valid_runs / verified_runs`.
+- `avg_assistant_turns`: average assistant turns (loop iterations) per prompt.
+- `avg_tool_calls`: average tool calls per prompt.
+- `missing`: expected model/prompt records that were not produced.
+- `pairwise wins`: per model+prompt comparison; framework with `valid=true` wins when the other is not `true`; otherwise tie.
 
-## Required Structure
-- Executive Summary
-- Model-by-Model Findings
-- Framework Effects (Secondary)
-- Failure Modes and Root Causes
-- Recommendations for Next Experiment
+## Provenance Labels
+- `parametric`: no tool used; validation was boolean.
+- `tool-assisted`: tool used and validation was `true`.
+- `hybrid_or_failed`: tool used and validation was `false`.
+- `unverified_parametric`: no tool used and validation unavailable (`null`).
+- `unverified_tool_used`: tool used and validation unavailable (`null`).
 
-## Guardrails
-- Use exact numbers from JSON.
-- Do not invent data not present in artifacts.
-- Explicitly call out unverified prompts (`validation.valid = null`) separately.
+## How To Read This Run
+1. Open summary markdown: `{markdown_path}`
+2. Open machine summary: `{summary_path}`
+3. Open per-prompt metrics CSV: `analysis/turns_and_tools_*.csv`
+4. Open per-model aggregates CSV: `analysis/model_aggregate_*.csv`
+5. Use `missing` list + framework logs to explain data gaps.
+
+## This Run Snapshot
+- Scratch valid/verified: `{ov['scratch_valid_verified']}/{ov['scratch_verified']}`
+- Strands valid/verified: `{ov['strands_valid_verified']}/{ov['strands_verified']}`
+- Scratch unverified: `{expected - ov['scratch_verified']}`
+- Strands unverified: `{expected - ov['strands_verified']}`
+- Missing artifacts: `{len(summary['missing'])}`
+
+## LLM Usage Notes
+- Give the LLM this file plus `comparison_*.json`.
+- Ask it to separate objective counts from interpretation.
+- Ask it to call out unverified/missing rows before ranking models.
 """
 
 
@@ -242,9 +289,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", required=True)
     parser.add_argument("--prompts", default="prompts.json")
+    parser.add_argument(
+        "--run-group",
+        default="",
+        help="Run group id under evaluation_results/runs/<id>. If omitted, legacy root layout is used.",
+    )
     args = parser.parse_args()
 
-    base = Path("evaluation_results")
+    if args.run_group:
+        base = Path("evaluation_results") / "runs" / args.run_group
+    else:
+        base = Path("evaluation_results")
     analysis_dir = base / "analysis"
     prompt_file = Path(args.prompts)
 
@@ -325,6 +380,8 @@ def main() -> None:
     summary = {
         "metadata": {
             "generated_at_utc": generated,
+            "run_group": args.run_group or None,
+            "expected_pairs_per_framework": len(args.models) * len(prompt_names),
             "models": args.models,
             "prompt_names": prompt_names,
             "prompt_file": str(prompt_file),
@@ -348,20 +405,20 @@ def main() -> None:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     out_json = analysis_dir / f"comparison_{stamp}.json"
     out_md = analysis_dir / f"comparison_{stamp}.md"
-    out_prompt = analysis_dir / f"llm_report_prompt_{stamp}.md"
+    out_guide = analysis_dir / f"interpretation_guide_{stamp}.md"
 
     save_json(out_json, summary)
     (out_md).write_text(build_markdown(summary, out_json))
-    (out_prompt).write_text(build_llm_prompt(out_json, out_md))
+    (out_guide).write_text(build_interpretation_guide(summary, out_json, out_md))
 
-    # compatibility outputs
+    # compatibility outputs in the same base directory
     save_json(base / "latest_comparison_summary.json", summary)
     save_json(base / "latest_runtime_summary.json", {"note": "Use comparison summary metrics/tool-calls for runtime proxy in this version."})
 
     print(f"Wrote {out_json}")
     print(f"Wrote {out_md}")
-    print(f"Wrote {out_prompt}")
-    print("Updated evaluation_results/latest_comparison_summary.json")
+    print(f"Wrote {out_guide}")
+    print(f"Updated {base / 'latest_comparison_summary.json'}")
 
 
 if __name__ == "__main__":

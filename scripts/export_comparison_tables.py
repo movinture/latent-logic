@@ -10,10 +10,10 @@ import json
 from pathlib import Path
 
 
-def latest_comparison_json() -> Path:
-    files = sorted(glob.glob("evaluation_results/analysis/comparison_*.json"))
+def latest_comparison_json(base: Path) -> Path:
+    files = sorted(glob.glob(str(base / "analysis" / "comparison_*.json")))
     if not files:
-        raise FileNotFoundError("No comparison JSON found in evaluation_results/analysis")
+        raise FileNotFoundError(f"No comparison JSON found in {base / 'analysis'}")
     return Path(files[-1])
 
 
@@ -84,15 +84,21 @@ def write_model_csv(data: dict, out_path: Path) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--comparison", default="", help="Path to comparison JSON. Defaults to latest in evaluation_results/analysis")
+    p.add_argument("--comparison", default="", help="Path to comparison JSON. Defaults to latest in analysis folder.")
+    p.add_argument(
+        "--run-group",
+        default="",
+        help="Run group id under evaluation_results/runs/<id>. If omitted, legacy root layout is used.",
+    )
     args = p.parse_args()
 
-    comparison_path = Path(args.comparison) if args.comparison else latest_comparison_json()
+    base = Path("evaluation_results") / "runs" / args.run_group if args.run_group else Path("evaluation_results")
+    comparison_path = Path(args.comparison) if args.comparison else latest_comparison_json(base)
     data = load_json(comparison_path)
 
     stem = comparison_path.stem.replace("comparison_", "")
-    out_pairwise = Path(f"evaluation_results/analysis/turns_and_tools_{stem}.csv")
-    out_model = Path(f"evaluation_results/analysis/model_aggregate_{stem}.csv")
+    out_pairwise = base / "analysis" / f"turns_and_tools_{stem}.csv"
+    out_model = base / "analysis" / f"model_aggregate_{stem}.csv"
 
     write_pairwise_csv(data, out_pairwise)
     write_model_csv(data, out_model)

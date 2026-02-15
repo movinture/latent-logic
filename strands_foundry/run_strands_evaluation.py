@@ -5,7 +5,7 @@ import re
 import sys
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from strands import Agent
@@ -26,9 +26,7 @@ from evaluation_utils import (
 logger = logging.getLogger(__name__)
 
 
-def setup_logging() -> logging.Logger:
-    repo_root = os.path.dirname(os.path.dirname(__file__))
-    log_dir = os.path.join(repo_root, "logs")
+def setup_logging(log_dir: str) -> logging.Logger:
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "strands_evaluation.log")
 
@@ -38,6 +36,39 @@ def setup_logging() -> logging.Logger:
         handlers=[logging.FileHandler(log_path), logging.StreamHandler()],
     )
     return logging.getLogger(__name__)
+
+
+def update_run_manifest(
+    run_dir: str,
+    framework: str,
+    models: list[str],
+    prompt_file: str,
+    prompt_version: str,
+    started_at_utc: str,
+    started_at_human: str,
+) -> None:
+    manifest_path = os.path.join(run_dir, "manifest.json")
+    manifest: dict = {}
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r") as f:
+            manifest = json.load(f)
+
+    if not manifest:
+        manifest = {
+            "run_group": os.path.basename(run_dir),
+            "framework_runs": {},
+        }
+
+    manifest["framework_runs"][framework] = {
+        "started_at_utc": started_at_utc,
+        "started_at_human": started_at_human,
+        "models": models,
+        "prompt_file": prompt_file,
+        "prompt_version": prompt_version,
+    }
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
 
 
 def sanitize_filename(text: str) -> str:
@@ -85,20 +116,42 @@ def create_agent(model_name: str) -> Agent:
     return Agent(model=model, tools=[http_request], system_prompt=system_prompt)
 
 
-def run_evaluation(models: list[str], prompt_file: str) -> None:
+def run_evaluation(models: list[str], prompt_file: str, run_group: str | None) -> None:
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    run_group_id = run_group or datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(repo_root, "evaluation_results", "runs", run_group_id)
+    os.makedirs(run_dir, exist_ok=True)
+
+    started_dt = datetime.now().astimezone()
+    run_started_human = started_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    run_started_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     prompt_data = load_prompts(prompt_file)
     prompts = prompt_data["prompts"]
     prompt_version = prompt_data.get("version", "unknown")
 
+    update_run_manifest(
+        run_dir=run_dir,
+        framework="strands",
+        models=models,
+        prompt_file=prompt_file,
+        prompt_version=prompt_version,
+        started_at_utc=run_started_utc,
+        started_at_human=run_started_human,
+    )
+
+    logger.info("Run group: %s", run_group_id)
+    logger.info("Run started: %s (%s)", run_started_human, run_started_utc)
+
     canonical_snapshot = build_canonical_snapshot(prompt_data)
-    canonical_dir = os.path.join("evaluation_results", "canonical")
+    canonical_dir = os.path.join(run_dir, "canonical")
     os.makedirs(canonical_dir, exist_ok=True)
     canonical_path = os.path.join(canonical_dir, f"canonical_{prompt_version}.json")
     with open(canonical_path, "w") as f:
         json.dump(canonical_snapshot, f, indent=2)
     logger.info("Canonical snapshot saved to %s", canonical_path)
 
-    results_root = os.path.join("evaluation_results", "strands")
+    results_root = os.path.join(run_dir, "strands")
     if not os.path.exists(results_root):
         os.makedirs(results_root)
 
@@ -123,6 +176,12 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
                 log_path = os.path.join(model_results_dir, f"{prompt_name}_{run_id}.json")
                 final_text, final_text_source = extract_text(result.message)
                 payload = {
+                    "run": {
+                        "run_group": run_group_id,
+                        "framework": "strands",
+                        "started_at_human": run_started_human,
+                        "started_at_utc": run_started_utc,
+                    },
                     "model": model_name,
                     "prompt_name": prompt_name,
                     "prompt_version": prompt_version,
@@ -153,6 +212,12 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
                 with open(validation_path, "w") as f:
                     json.dump(
                         {
+                            "run": {
+                                "run_group": run_group_id,
+                                "framework": "strands",
+                                "started_at_human": run_started_human,
+                                "started_at_utc": run_started_utc,
+                            },
                             "model": model_name,
                             "prompt_name": prompt_name,
                             "prompt_version": prompt_version,
@@ -181,7 +246,6 @@ def run_evaluation(models: list[str], prompt_file: str) -> None:
 
 
 if __name__ == "__main__":
-    logger = setup_logging()
     load_dotenv()
 
     if not os.getenv("FOUNDRY_ENDPOINT") or not os.getenv("FOUNDRY_API_KEY"):
@@ -195,6 +259,12 @@ if __name__ == "__main__":
         help="List of Foundry model deployment names to evaluate.",
     )
     parser.add_argument("--prompts", type=str, default="prompts.json", help="Path to prompts JSON file.")
+    parser.add_argument("--run-group", type=str, default=None, help="Run group id. Use same value across scratch/strands to group one cohort.")
     args = parser.parse_args()
 
-    run_evaluation(args.models, args.prompts)
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    run_group_id = args.run_group or datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = os.path.join(repo_root, "evaluation_results", "runs", run_group_id, "logs")
+    logger = setup_logging(log_dir)
+
+    run_evaluation(args.models, args.prompts, run_group_id)

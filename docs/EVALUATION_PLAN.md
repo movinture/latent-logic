@@ -60,10 +60,14 @@ Both scripts:
 
 1.  Takes a list of model names as a command-line argument.
 2.  Runs each prompt in the test suite against each model.
-3.  Saves the full conversation log for each model to a separate JSON file in `evaluation_results/scratch/` or `evaluation_results/strands/`.
-4.  Loads prompts from `prompts.json` by default (configurable with `--prompts`).
-5.  Produces a canonical snapshot per run in `evaluation_results/canonical/`.
-6.  Produces a sidecar validation file per prompt with provenance + verification fields.
+3.  Supports `--run-group <id>` and writes all artifacts into one run folder: `evaluation_results/runs/<id>/...`.
+4.  Saves the full conversation log for each model/prompt to JSON files in `evaluation_results/runs/<id>/scratch/` or `evaluation_results/runs/<id>/strands/`.
+5.  Writes per-run logs to `evaluation_results/runs/<id>/logs/`.
+6.  Loads prompts from `prompts.json` by default (configurable with `--prompts`).
+7.  Produces a canonical snapshot per run in `evaluation_results/runs/<id>/canonical/`.
+8.  Produces a sidecar validation file per prompt with provenance + verification fields.
+9.  Adds run metadata (`run_group`, `started_at_human`, `started_at_utc`) to output JSON.
+10. Updates `evaluation_results/runs/<id>/manifest.json` with framework-level run metadata.
 
 Canonical providers currently used:
 *   Location: Google Geocoding
@@ -83,16 +87,18 @@ Use deterministic comparison tooling first, then optional subjective analysis.
 1. Deterministic comparison:
 *   `scripts/compare_framework_runs.py`
 *   Produces:
-    * `evaluation_results/latest_comparison_summary.json`
-    * `evaluation_results/analysis/comparison_<timestamp>.json`
-    * `evaluation_results/analysis/comparison_<timestamp>.md`
-    * `evaluation_results/analysis/llm_report_prompt_<timestamp>.md`
+    * `evaluation_results/runs/<id>/latest_comparison_summary.json`
+    * `evaluation_results/runs/<id>/analysis/comparison_<timestamp>.json`
+    * `evaluation_results/runs/<id>/analysis/comparison_<timestamp>.md`
+    * `evaluation_results/runs/<id>/analysis/interpretation_guide_<timestamp>.md` (definitions + how to read)
 
 2. CSV exports for easier scanning:
 *   `scripts/export_comparison_tables.py`
 *   Produces:
-    * `evaluation_results/analysis/turns_and_tools_<timestamp>.csv`
-    * `evaluation_results/analysis/model_aggregate_<timestamp>.csv`
+    * `evaluation_results/runs/<id>/analysis/turns_and_tools_<timestamp>.csv`
+    * `evaluation_results/runs/<id>/analysis/model_aggregate_<timestamp>.csv`
 
 3. Subjective/rubric pass (optional):
 *   Use generated artifacts to evaluate response quality, reasoning style, and notable behavioral patterns.
+*   Use `docs/EVALUATION_GLOSSARY.md` for consistent terminology in human and LLM analysis.
+*   Use `docs/RESULTS_REVIEW_GUIDE.md` as the standard review sequence.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a model-insights markdown block from latest evaluation summaries."""
+"""Generate a model-insights markdown block from comparison artifacts."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
+import glob
 
 
 def load_json(path: Path) -> dict:
@@ -14,19 +15,11 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def avg_runtime_by_model(runtime_rows: list[dict]) -> dict[str, float]:
-    buckets: dict[str, list[float]] = {}
-    for row in runtime_rows:
-        model = row.get("model")
-        duration = row.get("duration_s")
-        if model is None or duration is None:
-            continue
-        buckets.setdefault(model, []).append(float(duration))
-    return {
-        model: round(sum(values) / len(values), 2)
-        for model, values in buckets.items()
-        if values
-    }
+def latest_comparison_json() -> Path:
+    files = sorted(glob.glob("evaluation_results/runs/*/analysis/comparison_*.json"))
+    if not files:
+        raise FileNotFoundError("No run-scoped comparison JSON found under evaluation_results/runs/*/analysis")
+    return Path(files[-1])
 
 
 def pairwise_counts(pairwise: list[dict]) -> tuple[int, int, int]:
@@ -34,8 +27,8 @@ def pairwise_counts(pairwise: list[dict]) -> tuple[int, int, int]:
     strands_wins = 0
     ties = 0
     for row in pairwise:
-        s_valid = bool((row.get("scratch") or {}).get("valid"))
-        t_valid = bool((row.get("strands") or {}).get("valid"))
+        s_valid = row.get("scratch_valid")
+        t_valid = row.get("strands_valid")
         if s_valid and not t_valid:
             scratch_wins += 1
         elif t_valid and not s_valid:
@@ -82,29 +75,21 @@ def reason_line(record: dict) -> str:
 
 def build_markdown(
     comparison: dict,
-    runtime: dict,
     prompts: dict,
     tag: str,
     canonical_path: str,
     comparison_path: str,
-    runtime_path: str,
 ) -> str:
-    scratch_rows = comparison["summary"]["scratch"]
-    strands_rows = comparison["summary"]["strands"]
-    scratch_by_model = {r["model"]: r for r in scratch_rows}
-    strands_by_model = {r["model"]: r for r in strands_rows}
+    by_model = comparison.get("by_model", {})
+    all_models = sorted(by_model.keys())
+    overall = comparison.get("overall", {})
 
-    all_models = sorted(set(scratch_by_model) | set(strands_by_model))
-
-    scratch_valid = sum(int(r.get("valid", 0)) for r in scratch_rows)
-    scratch_runs = sum(int(r.get("runs", 0)) for r in scratch_rows)
-    strands_valid = sum(int(r.get("valid", 0)) for r in strands_rows)
-    strands_runs = sum(int(r.get("runs", 0)) for r in strands_rows)
+    scratch_valid = int(overall.get("scratch_valid_verified", 0))
+    scratch_runs = int(overall.get("scratch_verified", 0))
+    strands_valid = int(overall.get("strands_valid_verified", 0))
+    strands_runs = int(overall.get("strands_verified", 0))
 
     scratch_wins, strands_wins, ties = pairwise_counts(comparison.get("pairwise", []))
-
-    scratch_runtime = avg_runtime_by_model(runtime.get("scratch", []))
-    strands_runtime = avg_runtime_by_model(runtime.get("strands", []))
 
     prompt_version = prompts.get("version", "unknown")
     prompt_names = [p.get("name", "unknown_prompt") for p in prompts.get("prompts", [])]
@@ -124,7 +109,6 @@ def build_markdown(
     lines.append("- Canonical snapshot: `" + canonical_path + "`")
     lines.append("- Generated summaries used:")
     lines.append("  - `" + comparison_path + "`")
-    lines.append("  - `" + runtime_path + "`")
     lines.append("- Scope caveat:")
     lines.append("  - Single cohort; treat as operational tool-use signal, not broad capability ranking.")
     lines.append("")
@@ -143,12 +127,13 @@ def build_markdown(
     lines.append("")
 
     for model in all_models:
-        s = scratch_by_model.get(model, {})
-        t = strands_by_model.get(model, {})
-        s_valid = int(s.get("valid", 0))
-        t_valid = int(t.get("valid", 0))
-        s_runs = int(s.get("runs", 0))
-        t_runs = int(t.get("runs", 0))
+        rec = by_model.get(model, {})
+        s = rec.get("scratch", {})
+        t = rec.get("strands", {})
+        s_valid = int(s.get("valid_runs", 0))
+        t_valid = int(t.get("valid_runs", 0))
+        s_runs = int(s.get("verified_runs", 0))
+        t_runs = int(t.get("verified_runs", 0))
 
         lines.append(f"#### {model}")
         lines.append(
@@ -158,10 +143,6 @@ def build_markdown(
         lines.append(
             f"- Tool profile: scratch `{tool_style(s)}` (avg tool calls `{s.get('avg_tool_calls', 0)}`), "
             f"strands `{tool_style(t)}` (avg tool calls `{t.get('avg_tool_calls', 0)}`)."
-        )
-        lines.append(
-            f"- Runtime: scratch avg `{scratch_runtime.get(model, 'n/a')}s`, "
-            f"strands avg `{strands_runtime.get(model, 'n/a')}s`."
         )
         lines.append(
             f"- Failure signals: scratch `{reason_line(s)}`, strands `{reason_line(t)}`."
@@ -181,13 +162,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate model-insights markdown block.")
     parser.add_argument(
         "--comparison",
-        default="evaluation_results/latest_comparison_summary.json",
-        help="Path to latest comparison summary JSON.",
+        default="",
+        help="Path to comparison summary JSON. Defaults to latest run-scoped comparison.",
     )
     parser.add_argument(
         "--runtime",
-        default="evaluation_results/latest_runtime_summary.json",
-        help="Path to runtime summary JSON.",
+        default="",
+        help="Deprecated in current schema; kept for CLI compatibility.",
     )
     parser.add_argument(
         "--prompts",
@@ -196,7 +177,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--canonical",
-        default="evaluation_results/canonical/canonical_2026-02-12.json",
+        default="evaluation_results/runs/<run_group>/canonical/canonical_<prompt_version>.json",
         help="Canonical snapshot path to reference in output.",
     )
     parser.add_argument(
@@ -211,22 +192,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    comparison_path = Path(args.comparison)
-    runtime_path = Path(args.runtime)
+    comparison_path = Path(args.comparison) if args.comparison else latest_comparison_json()
     prompts_path = Path(args.prompts)
 
     comparison = load_json(comparison_path)
-    runtime = load_json(runtime_path)
     prompts = load_json(prompts_path)
 
     block = build_markdown(
         comparison,
-        runtime,
         prompts,
         args.tag,
         args.canonical,
         str(comparison_path),
-        str(runtime_path),
     )
 
     if args.append:

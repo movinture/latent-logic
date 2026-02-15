@@ -60,11 +60,11 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 
 ### Scratch
 - Runner: `scratch_foundry/run_evaluation.py`.
-- Results: `evaluation_results/scratch/<model>/...`.
+- Results: `evaluation_results/runs/<run_group>/scratch/<model>/...`.
 
 ### Strands
 - Runner: `strands_foundry/run_strands_evaluation.py`.
-- Results: `evaluation_results/strands/<model>/...`.
+- Results: `evaluation_results/runs/<run_group>/strands/<model>/...`.
 
 ### Canonical Validation
 - Shared utilities are in `evaluation_utils.py`.
@@ -73,7 +73,7 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
   - Weather: OpenWeather API (`OPENWEATHER_API_KEY`)
   - ISS position: `wheretheiss.at`
   - FX rate: `open.er-api.com`
-- Each run builds a canonical snapshot and saves it under `evaluation_results/canonical/canonical_<prompt_version>.json`.
+- Each run builds a canonical snapshot and saves it under `evaluation_results/runs/<run_group>/canonical/canonical_<prompt_version>.json`.
 - Each model/prompt output writes a validation sidecar alongside the result JSON.
 - Validation currently checks:
   - Weather temperature difference vs canonical (`max_diff_c`)
@@ -90,15 +90,15 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 
 ### Comparison Tooling
 - Deterministic cross-framework comparison script: `scripts/compare_framework_runs.py`.
-- It selects the best-coverage Strands run for the requested model/prompt matrix and compares it against scratch.
+- It compares scratch vs Strands for one run group (`--run-group`), selecting the best-coverage Strands run id inside that group.
 - It emits:
-  - `evaluation_results/latest_comparison_summary.json`
-  - `evaluation_results/analysis/comparison_<timestamp>.json`
-  - `evaluation_results/analysis/comparison_<timestamp>.md`
-  - `evaluation_results/analysis/llm_report_prompt_<timestamp>.md`
+  - `evaluation_results/runs/<run_group>/latest_comparison_summary.json`
+  - `evaluation_results/runs/<run_group>/analysis/comparison_<timestamp>.json`
+  - `evaluation_results/runs/<run_group>/analysis/comparison_<timestamp>.md`
+  - `evaluation_results/runs/<run_group>/analysis/interpretation_guide_<timestamp>.md`
 - CSV exporter: `scripts/export_comparison_tables.py`, which writes:
-  - `evaluation_results/analysis/turns_and_tools_<timestamp>.csv`
-  - `evaluation_results/analysis/model_aggregate_<timestamp>.csv`
+  - `evaluation_results/runs/<run_group>/analysis/turns_and_tools_<timestamp>.csv`
+  - `evaluation_results/runs/<run_group>/analysis/model_aggregate_<timestamp>.csv`
 
 ## Tool-Calling Nuances
 - **DeepSeek-V3.2:** Requires JSON tool-call format (`tool_name`, `tool_arguments`).
@@ -133,7 +133,7 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 - **Evaluation:** Strands harness mirrors scratch prompts but uses the Strands loop and tools.
 
 ## Logging
-- Console output is mirrored to log files under `logs/`.
+- Console output is mirrored to per-run log files under `evaluation_results/runs/<run_group>/logs/`.
 - Scratch and Strands scripts each write their own log file.
 
 ## Known Issues and Gotchas
@@ -142,6 +142,6 @@ This repo is a hands-on testbed for building and comparing simple, tool-using ag
 - Gemini scratch agents are prompted with a Linus Torvalds persona; Foundry scratch and Strands paths no longer enforce that persona.
 
 ## Output and Artifacts
-- Evaluation logs are written as JSON to `evaluation_results/scratch` and `evaluation_results/strands`.
-- Canonical snapshots are written to `evaluation_results/canonical`.
+- Evaluation logs are written as JSON to `evaluation_results/runs/<run_group>/scratch` and `evaluation_results/runs/<run_group>/strands`.
+- Canonical snapshots are written to `evaluation_results/runs/<run_group>/canonical`.
 - Validation sidecars are written next to each prompt result JSON in both scratch and Strands runs.
