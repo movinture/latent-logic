@@ -13,6 +13,7 @@ from strands_tools import http_request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from foundry_auth import resolve_foundry_auth_config
 from strands_foundry import FoundryCompletionsModel
 from evaluation_utils import (
     load_prompts,
@@ -103,8 +104,6 @@ def extract_text(message: dict) -> tuple[str, str]:
 def create_agent(model_name: str) -> Agent:
     model = FoundryCompletionsModel(
         model_id=model_name,
-        endpoint=os.getenv("FOUNDRY_ENDPOINT", ""),
-        api_key=os.getenv("FOUNDRY_API_KEY", ""),
         params={"temperature": 0.2},
     )
 
@@ -247,9 +246,7 @@ def run_evaluation(models: list[str], prompt_file: str, run_group: str | None) -
 
 if __name__ == "__main__":
     load_dotenv()
-
-    if not os.getenv("FOUNDRY_ENDPOINT") or not os.getenv("FOUNDRY_API_KEY"):
-        raise RuntimeError("FOUNDRY_ENDPOINT and FOUNDRY_API_KEY must be set in the environment.")
+    auth_config = resolve_foundry_auth_config()
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -266,5 +263,12 @@ if __name__ == "__main__":
     run_group_id = args.run_group or datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = os.path.join(repo_root, "evaluation_results", "runs", run_group_id, "logs")
     logger = setup_logging(log_dir)
+    logger.info(
+        "Auth config: endpoint_family=%s scope=%s auth_mode=%s base_url=%s",
+        auth_config.endpoint_family,
+        auth_config.scope,
+        auth_config.auth_mode,
+        auth_config.base_url,
+    )
 
     run_evaluation(args.models, args.prompts, run_group_id)

@@ -3,10 +3,10 @@ import json
 import argparse
 import logging
 import sys
-from openai import OpenAI
 from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from foundry_auth import create_openai_client, describe_foundry_auth
 from scratch_foundry.fileTools import file_tools
 
 
@@ -28,10 +28,7 @@ load_dotenv()
 class FoundryAgent:
     def __init__(self, model: str, tools: list[dict], system_instruction: str = "You are a helpful assistant."):
         self.model = model
-        self.client = OpenAI(
-            base_url=os.getenv("FOUNDRY_ENDPOINT"),
-            api_key=os.getenv("FOUNDRY_API_KEY")
-        )
+        self.client, self.auth_config = create_openai_client()
         self.messages = [{"role": "system", "content": system_instruction}]
         self.tools = tools
         self.tool_definitions = [{"type": "function", "function": tool["definition"]} for tool in self.tools.values()]
@@ -142,6 +139,7 @@ if __name__ == "__main__":
         tools=file_tools, 
         system_instruction="You are a helpful coding assistant. When you need to call a tool, you must respond with a JSON object with 'tool_name' and 'tool_arguments' keys."
     )
+    logger.info("Auth config: %s", describe_foundry_auth(agent.auth_config))
     
     logger.info("Agent ready. Using model: %s", args.model)
     while True:

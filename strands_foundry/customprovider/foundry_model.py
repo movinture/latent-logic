@@ -1,4 +1,5 @@
 import json
+import inspect
 import logging
 import os
 import uuid
@@ -10,6 +11,7 @@ from typing import Any, Literal, TypedDict, TypeVar, cast
 import openai
 from pydantic import BaseModel
 
+from foundry_auth import build_openai_client_kwargs, describe_foundry_auth
 from strands.models.model import Model
 from strands.types.content import Messages, SystemContentBlock
 from strands.types.exceptions import ContextWindowOverflowException
@@ -27,7 +29,7 @@ T = TypeVar("T", bound=BaseModel)
 class FoundryConfig(TypedDict, total=False):
     model_id: str
     endpoint: str
-    api_key: str
+    api_key: Any
     params: dict[str, Any] | None
     tool_call_mode: Literal["openai", "deepseek_json", "auto"]
 
@@ -49,11 +51,15 @@ class FoundryCompletionsModel(Model):
     def __init__(self, **model_config: Any) -> None:
         self.config: FoundryConfig = {}
         self.update_config(**model_config)
+        self.auth_config: dict[str, str] | None = None
 
-        if not self.config.get("endpoint"):
-            self.config["endpoint"] = os.getenv("FOUNDRY_ENDPOINT", "")
-        if not self.config.get("api_key"):
-            self.config["api_key"] = os.getenv("FOUNDRY_API_KEY", "")
+        client_kwargs, auth_config = build_openai_client_kwargs(
+            endpoint_override=cast(str | None, self.config.get("endpoint")),
+            api_key_override=self.config.get("api_key"),
+        )
+        self.config["endpoint"] = cast(str, client_kwargs["base_url"])
+        self.config["api_key"] = client_kwargs["api_key"]
+        self.auth_config = describe_foundry_auth(auth_config)
 
         if not self.config.get("tool_call_mode"):
             self.config["tool_call_mode"] = "auto"
@@ -67,10 +73,23 @@ class FoundryCompletionsModel(Model):
     @asynccontextmanager
     async def _get_client(self) -> AsyncIterator[Any]:
         async with openai.AsyncOpenAI(
-            api_key=self.config.get("api_key"),
+            api_key=self._get_async_api_key_provider(),
             base_url=self.config.get("endpoint"),
         ) as client:
             yield client
+
+    def _get_async_api_key_provider(self) -> Any:
+        api_key = self.config.get("api_key")
+        if not callable(api_key):
+            return api_key
+
+        if inspect.iscoroutinefunction(api_key):
+            return api_key
+
+        async def _provider() -> Any:
+            return api_key()
+
+        return _provider
 
     def _build_request(
         self,

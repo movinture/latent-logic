@@ -9,6 +9,7 @@ from strands import Agent
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from foundry_auth import resolve_foundry_auth_config
 from strands_foundry import FoundryCompletionsModel
 
 
@@ -44,15 +45,17 @@ def main() -> None:
 
     load_dotenv()
 
-    endpoint = os.getenv("FOUNDRY_ENDPOINT")
-    api_key = os.getenv("FOUNDRY_API_KEY")
-    if not endpoint or not api_key:
-        raise RuntimeError("FOUNDRY_ENDPOINT and FOUNDRY_API_KEY must be set in the environment.")
+    auth_config = resolve_foundry_auth_config()
+    logger.info(
+        "Auth config: endpoint_family=%s scope=%s auth_mode=%s base_url=%s",
+        auth_config.endpoint_family,
+        auth_config.scope,
+        auth_config.auth_mode,
+        auth_config.base_url,
+    )
 
     model = FoundryCompletionsModel(
         model_id=args.model,
-        endpoint=endpoint,
-        api_key=api_key,
         params={"temperature": 0.2},
     )
 

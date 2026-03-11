@@ -24,13 +24,27 @@ uv sync --locked
 ### 2) Create `.env`
 ```
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-FOUNDRY_ENDPOINT="YOUR_FOUNDRY_ENDPOINT"
-FOUNDRY_API_KEY="YOUR_FOUNDRY_API_KEY"
+AZURE_AI_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+# Optional fallback if you still need the legacy API-key path for scratch_foundry:
+# FOUNDRY_AUTH_MODE="api_key"
+# FOUNDRY_API_KEY="YOUR_FOUNDRY_API_KEY"
+# Optional endpoint alternatives:
+# FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+# FOUNDRY_ENDPOINT="https://<resource>.openai.azure.com/openai/v1/"
+# AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com/"
+# Optional endpoint construction:
+# FOUNDRY_RESOURCE_NAME="your-foundry-resource"
+# FOUNDRY_PROJECT_NAME="your-project-name"
+# Optional default model for smoke tests:
+# AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4.1-mini"
 GOOGLE_GEOCODING_API_KEY="YOUR_GOOGLE_GEOCODING_API_KEY"
 OPENWEATHER_API_KEY="YOUR_OPENWEATHER_API_KEY"
 ```
 
 Notes:
+- For `scratch_foundry` and `strands_foundry`, Azure Identity / Entra ID is now the default auth flow.
+- Run `az login` before using the Foundry/Azure OpenAI paths with Azure Identity.
+- `FOUNDRY_AUTH_MODE=api_key` keeps the old API-key path available as a fallback.
 - Enable the Google Geocoding API for the `GOOGLE_GEOCODING_API_KEY` project.
 - Use an OpenWeather API key with current weather access.
 
@@ -40,9 +54,19 @@ Notes:
 uv run scratch_foundry/httpAgent.py --model Kimi-K2.5
 ```
 
+Scratch auth smoke test:
+```bash
+uv run scripts/foundry_auth_smoke.py --model gpt-4.1-mini
+```
+
 **Strands (Foundry)**
 ```bash
 uv run strands_foundry/foundry_strands_basic.py --model Kimi-K2.5
+```
+
+Strands auth smoke test:
+```bash
+uv run strands_foundry/foundry_strands_basic.py --model gpt-4.1 --prompt "Reply with exactly: strands auth smoke test ok"
 ```
 
 **Gemini scratch**
@@ -141,6 +165,18 @@ Outputs:
 ## Logging
 
 All evaluation scripts log to console and per-run log files under `evaluation_results/runs/<run_group>/logs/`.
+
+## Foundry Auth
+
+`scratch_foundry` and `strands_foundry` now resolve auth like this:
+- Default: Azure Identity via `AzureCliCredential()` then `DefaultAzureCredential(exclude_cli_credential=True)`.
+- Fallback: set `FOUNDRY_AUTH_MODE=api_key` and `FOUNDRY_API_KEY`.
+
+Endpoint/scope mapping:
+- Foundry project endpoint (`AZURE_AI_PROJECT_ENDPOINT`, `FOUNDRY_PROJECT_ENDPOINT`, or `.services.ai.azure.com`): scope `https://ai.azure.com/.default`
+- Azure OpenAI resource endpoint (`FOUNDRY_ENDPOINT`, `AZURE_OPENAI_ENDPOINT`, or `.openai.azure.com`): scope `https://cognitiveservices.azure.com/.default`
+
+The helper normalizes either endpoint family to an `OpenAI(base_url=.../openai/v1)` client.
 
 ## Validation
 
